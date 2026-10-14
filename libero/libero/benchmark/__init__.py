@@ -1,4 +1,5 @@
 import abc
+import json
 import os
 import glob
 import random
@@ -98,6 +99,47 @@ for libero_suite in libero_suites:
         # print(language, "\n", f"{task}.bddl", "\n")
         # print("")
 
+
+def get_ids_by_category(category_value):
+    """Return task-map indices grouped by suite for a LIBERO-plus category."""
+    classification_path = os.path.join(
+        os.path.dirname(__file__), "task_classification.json"
+    )
+    with open(classification_path, "r", encoding="utf-8") as classification_file:
+        classification = json.load(classification_file)
+
+    task_orders = {}
+    for suite_name, tasks in classification.items():
+        task_indices = {
+            task_name: index
+            for index, task_name in enumerate(task_maps[suite_name])
+        }
+        matching_names = [
+            task["name"]
+            for task in tasks
+            if task.get("category") == category_value
+        ]
+        missing_names = [name for name in matching_names if name not in task_indices]
+        if missing_names:
+            raise ValueError(
+                f"Classification contains tasks absent from {suite_name!r}: "
+                f"{missing_names[:5]}"
+            )
+        matching_ids = [task_indices[name] for name in matching_names]
+        if not matching_ids:
+            continue
+
+        orders = [matching_ids.copy()]
+        for _ in range(19):
+            shuffled_ids = matching_ids.copy()
+            random.shuffle(shuffled_ids)
+            orders.append(shuffled_ids)
+        task_orders[suite_name] = orders
+
+    if not task_orders:
+        raise ValueError(f"Unknown or empty LIBERO-plus category: {category_value!r}")
+    return task_orders
+
 suite_order = ["libero_spatial", "libero_object", "libero_goal", "libero_10", "libero_90"]
 task_num = [2402, 2518, 2591, 2519, 90]
 task_order_dict = dict()
@@ -113,14 +155,24 @@ for idx in range(5):
 class Benchmark(abc.ABC):
     """A Benchmark."""
 
-    def __init__(self, task_order_index=0):
+    def __init__(self, task_order_index=0, category_value=None):
         self.task_embs = None
         self.task_order_index = task_order_index
+        self.task_order_dict = (
+            task_order_dict
+            if category_value is None
+            else get_ids_by_category(category_value)
+        )
 
     def _make_benchmark(self):
         tasks = list(task_maps[self.name].values())
-        print(f"[info] using task orders {task_order_dict[self.name][self.task_order_index]}")
-        self.tasks = [tasks[i] for i in task_order_dict[self.name][self.task_order_index]]
+        if self.name not in self.task_order_dict:
+            raise ValueError(
+                f"No tasks for suite {self.name!r} in the selected LIBERO-plus category"
+            )
+        selected_order = self.task_order_dict[self.name][self.task_order_index]
+        print(f"[info] using task orders {selected_order}")
+        self.tasks = [tasks[i] for i in selected_order]
         self.n_tasks = len(self.tasks)
 
     def get_num_tasks(self):
@@ -183,7 +235,7 @@ class Benchmark(abc.ABC):
                 self.tasks[i].init_states_file,
             )
 
-        init_states = torch.load(init_states_path)
+        init_states = torch.load(init_states_path, weights_only=False)
         return init_states
     
     def get_task_init_states(self, i):
@@ -239,7 +291,7 @@ class Benchmark(abc.ABC):
         
         # print("====init_states_path=====", init_states_path)
 
-        init_states = torch.load(init_states_path)
+        init_states = torch.load(init_states_path, weights_only=False)
         if "_add_" in self.tasks[i].init_states_file or "_level" in self.tasks[i].init_states_file:
             init_states = init_states.reshape(1, -1)
         return init_states
@@ -250,32 +302,32 @@ class Benchmark(abc.ABC):
 
 @register_benchmark
 class LIBERO_SPATIAL(Benchmark):
-    def __init__(self, task_order_index=0):
-        super().__init__(task_order_index=task_order_index)
+    def __init__(self, task_order_index=0, category_value=None):
+        super().__init__(task_order_index=task_order_index, category_value=category_value)
         self.name = "libero_spatial"
         self._make_benchmark()
 
 
 @register_benchmark
 class LIBERO_OBJECT(Benchmark):
-    def __init__(self, task_order_index=0):
-        super().__init__(task_order_index=task_order_index)
+    def __init__(self, task_order_index=0, category_value=None):
+        super().__init__(task_order_index=task_order_index, category_value=category_value)
         self.name = "libero_object"
         self._make_benchmark()
 
 
 @register_benchmark
 class LIBERO_GOAL(Benchmark):
-    def __init__(self, task_order_index=0):
-        super().__init__(task_order_index=task_order_index)
+    def __init__(self, task_order_index=0, category_value=None):
+        super().__init__(task_order_index=task_order_index, category_value=category_value)
         self.name = "libero_goal"
         self._make_benchmark()
 
 
 @register_benchmark
 class LIBERO_90(Benchmark):
-    def __init__(self, task_order_index=0):
-        super().__init__(task_order_index=task_order_index)
+    def __init__(self, task_order_index=0, category_value=None):
+        super().__init__(task_order_index=task_order_index, category_value=category_value)
         assert (
             task_order_index == 0
         ), "[error] currently only support task order for 10-task suites"
@@ -285,22 +337,22 @@ class LIBERO_90(Benchmark):
 
 @register_benchmark
 class LIBERO_10(Benchmark):
-    def __init__(self, task_order_index=0):
-        super().__init__(task_order_index=task_order_index)
+    def __init__(self, task_order_index=0, category_value=None):
+        super().__init__(task_order_index=task_order_index, category_value=category_value)
         self.name = "libero_10"
         self._make_benchmark()
 
 
 @register_benchmark
 class LIBERO_100(Benchmark):
-    def __init__(self, task_order_index=0):
-        super().__init__(task_order_index=task_order_index)
+    def __init__(self, task_order_index=0, category_value=None):
+        super().__init__(task_order_index=task_order_index, category_value=category_value)
         self.name = "libero_100"
         self._make_benchmark()
 
 @register_benchmark
 class LIBERO_MIX(Benchmark):
-    def __init__(self, task_order_index=0):
-        super().__init__(task_order_index=task_order_index)
+    def __init__(self, task_order_index=0, category_value=None):
+        super().__init__(task_order_index=task_order_index, category_value=category_value)
         self.name = "libero_mix"
         self._make_benchmark()

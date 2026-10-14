@@ -12,22 +12,34 @@ import time
 from io import BytesIO
 import cv2
 import ctypes
-from wand.api import library as wandlibrary
-from wand.image import Image as WandImage
 from skimage.filters import gaussian
 from scipy.ndimage import zoom as scizoom
 
-# Tell Python about the C method
-wandlibrary.MagickMotionBlurImage.argtypes = (ctypes.c_void_p,  # wand
-                                              ctypes.c_double,  # radius
-                                              ctypes.c_double,  # sigma
-                                              ctypes.c_double)  # angle
+try:
+    from wand.api import library as wandlibrary
+    from wand.image import Image as WandImage
+except ImportError:
+    wandlibrary = None
+    WandImage = None
+else:
+    # Tell Python about the C method.
+    wandlibrary.MagickMotionBlurImage.argtypes = (
+        ctypes.c_void_p,
+        ctypes.c_double,
+        ctypes.c_double,
+        ctypes.c_double,
+    )
 
-class MotionImage(WandImage):
+class MotionImage(WandImage if WandImage is not None else object):
     def motion_blur(self, radius=0.0, sigma=0.0, angle=0.0):
         wandlibrary.MagickMotionBlurImage(self.wand, radius, sigma, angle)
 
 def motion_blur(x, severity=1):
+    if WandImage is None:
+        raise RuntimeError(
+            "Sensor-noise levels 1-10 require Wand and ImageMagick. "
+            "Install the Python 'Wand' package and libmagickwand."
+        )
     # c = [(10, 3), (15, 5), (15, 8), (15, 12), (20, 15)][severity - 1]
     # c = [(15, 5), (20, 8), (25, 12), (30, 15), (35, 20)][severity - 1]
     c = [
